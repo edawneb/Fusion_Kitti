@@ -1,0 +1,6 @@
+﻿MyPort 20000
+MyIP 192.168.1.22
+YourPort 20000
+YourIP 192.168.1.24
+Role Client
+Max Size 1024
