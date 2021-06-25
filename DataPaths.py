@@ -15,8 +15,19 @@ class sequence:
         self.length   = length
         self.lists    = Mr_List
 
+    def GetPath(self):
+        ret = self.path
+        return ret
+    
+    def GetLength(self):
+        ret = self.length
+        return ret
 
-
+    #this is a list of directories, not the actual data
+    #would pull all data into memory simulatenously, which would suck
+    def GetList(self):
+        ret = self.lists
+        return ret
     
 class KITTIData:
     def __init__(self):
@@ -33,27 +44,30 @@ class KITTIData:
         self.Velo_dat_train     = sequence("/data_tracking_velodyne/training/velodyne", 0, self.Get_velo_dat_train())
         self.Velo_lab_test      = sequence("/data_tracking_det_2_regionlets/testing/det_02", 0, self.Get_velo_lab_test())
         self.Velo_lab_train     = sequence("/data_tracking_det_2_regionlets/training/det_02", 0, self.Get_velo_lab_train())          
-        
-        
-
-        
-        
-        
-        
-        
-        #Unused
-        self.calib        = "data_tracking_calib"
+        self.test_calib        = sequence("data_tracking_calib/testing/calib", 0, self.get_test_calib())
+        self.train_calib       = sequence("data_tracking_calib/training/calib", 0, self.get_train_calib())
+        #unsused
         self.oxts         = "data_tracking_oxts"
         self.lsvm         = "data_tracking_det_2_lsvm"
         
-        
+    #gets a list of all files directories in a given 
     def GetDir(self, directory):
+        #todo join the index to the directory
         ret = os.listdir(directory)
         for x in ret:
             x = os.path.join(directory, x)
         return ret
             
+    def Get_test_calib(self):
+        ret = self.GetDir(self.test_calib.path)
+        self.test_calib.length = len(ret)
+        return ret
             
+    def Get_train_calib(self):
+        ret = self.GetDir(self.train_calib.path)
+        self.train_calib.length = len(ret)
+        return ret
+    
     def Get_Im_2_dat_test(self):
         ret = self.GetDir(self.Im_2_Dir_dat_test.path)
         self.Im_2_Dir_dat_test.length = len(ret)
