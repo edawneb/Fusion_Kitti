@@ -8,8 +8,6 @@ Created on Thu May  6 10:59:03 2021
 import os
 
 class sequence:
-
-    
     def __init__(self, path, length, Mr_List):
         self.path     = path
         self.length   = length

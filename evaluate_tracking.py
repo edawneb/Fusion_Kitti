@@ -941,7 +941,7 @@ if __name__ == "__main__":
     # check for correct number of arguments. if user_sha and email are not supplied,
     # no notification email is sent (this option is used for auto-updates)
     if len(sys.argv)!=2 and len(sys.argv)!=4:
-      print "Usage: python eval_tracking.py result_sha [user_sha email]"
+      print("Usage: python eval_tracking.py result_sha [user_sha email]")
       sys.exit(1);
 
     # get unique sha key of submitted results
