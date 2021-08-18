@@ -26,53 +26,74 @@ int main(){
     return 0;
 }
 
-
+//class basically works by creating a series of records of the system status stored in the dataAggregator sub-class.
+//each instance of cudaDeviceProps holds the instanteous read outs of each cuda device stored in an array of cudaDeviceProps.
+//Along specific intervals, the idea is to instantiate a dataAggregator at each timestamp, and append it to the vector of dataAggregators
+//in SystemInfoAggregator. once the program runs, the SystemInfoAggregator vector will contain a continous record of device utilization.
 class SystemInfoAggregator
 {
     private:
         static size_t class_free;
         static size_t class_total;
-        static int class_DeviceCount;
+        static int class_deviceCount;
         static int class_cpuCount;
         static int class_gpuCount;
         static time_t startTime;
         time_t now;
-        struct dataAggregator
-        {
-            time_t timestamp;
-            size_t free = NULL;
-            size_t total = class_free;
-            int DeviceCount = class_DeviceCount;
-            int cpuCount = class_cpuCount;
-            int gpuCount = class_gpuCount;
-            cudaDeviceProp *deviceCache;
+        
+
+        class dataAggregator
+        {   public:
+                time_t timestamp;
+                size_t free;
+                size_t total;
+                int deviceCount;
+                int cpuCount;
+                int gpuCount;
+                cudaDeviceProp *deviceCache;
+                dataAggregator(){
+                    timestamp = NULL;
+                    free = NULL;
+                    total = NULL;
+                    deviceCount = NULL;
+                    cpuCount = NULL;
+                    gpuCount = NULL;
+                    deviceCache = NULL;
+                };
+                dataAggregator(size_t class_total, int class_deviceCount, int class_cpuCount, int class_gpuCount){
+                    timestamp = NULL;
+                    free = class_total;
+                    total = NULL;
+                    deviceCount = class_deviceCount;
+                    cpuCount = class_cpuCount;
+                    gpuCount = class_gpuCount;
+                    deviceCache = NULL;
+                };
+
+                
+
         };
-
-
-        dataAggregator *localCopy;
+        
+        dataAggregator working_var;
         vector<dataAggregator> dataPile;
 
-        void newDataPoint()
-        {
-
-            dataPile.push_back(getCurrentInfo())
-        }
+        
 
         dataAggregator getCurrentInfo()
         {
-            localCopy = new dataAggregator;
-            time(&now)
-            localCopy.timeStamp = difftime(startTime, now)
-            cudaMemGetInfo(&localCopy.free, &localCopy.total)
+            dataAggregator localCopy(class_total, class_deviceCount, class_cpuCount, class_gpuCount);
+            time(&now);
+            localCopy.timestamp = difftime(startTime, now);
+            cudaMemGetInfo(&localCopy.free, &localCopy.total);
             getDeviceData(localCopy);
+            return localCopy;
         }
         
 
 
-        void getDeviceData(dataAggregator *localCopy)
+        void getDeviceData(dataAggregator localCopy)
         {
             if (localCopy.gpuCount!=NULL){
-                cudaDeviceProp *localCache = new cudaDeviceProp[localCopy.gpuCount];
                 for(int i=0; i<localCopy.gpuCount; i++)
                 {
                     cudaGetDeviceProperties(&localCopy.deviceCache[i], i);
@@ -86,15 +107,23 @@ class SystemInfoAggregator
         SystemInfoAggregator()
         {
             time(&startTime);
-            cudaGetDeviceCount(&localCopy.gpuCount); //load original number of devices
-            cudaMemGetInfo(&localCopy.free, &localCopy.total); //Using this to just get the total mem available and an initial snapshot
-            localCopy.cpuCount = thread::hardware_concurrency(); //Getting threadCount
-            localCopy.deviceCache = new cudaDeviceProp[localCopy.gpuCount];
+            cudaGetDeviceCount(&class_gpuCount); //load original number of devices
+            cudaMemGetInfo(&class_free, &class_total); //Using this to just get the total mem available and an initial snapshot
+            class_cpuCount = thread::hardware_concurrency(); //Getting threadCount
+            class_deviceCount = class_gpuCount+class_cpuCount;
+            
+            working_var = getCurrentInfo();
+            working_var.deviceCache = new cudaDeviceProp[class_gpuCount];
+            
         }   
         ~SystemInfoAggregator()
         {
             
         }
+        void newDataPoint()
+            {
+                dataPile.push_back(getCurrentInfo());
+            }    
 
         
 };
