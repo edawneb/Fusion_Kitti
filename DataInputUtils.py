@@ -5,20 +5,93 @@ Created on Sun Apr 11 18:08:57 2021
 @author: bentw
 """
 import sys,os,copy,math
+import numpy as np
+import PIL as Image
+from DataPaths import KITTIData
 
+
+#one of these per sequence of frames. If you load all sequences at once
+#the pc will run out of mem
+
+#TODO: ReadCalibs->read in the file types
 class FrameSeqence:
-    def init(self, root, frame_num):
+    def init(self, root, frame_num, training_bool, set_indexer):
         self.frame_num = frame_num
         self.root = root
+        self.PathPool = KITTIData 
+        self.TrainingBool = training_bool
+        self.SetIndex = set_indexer
+        #self.IM2
+        #self.IM3
+        #self.velo
+        self.directory = self.PathPool.BaseDir
+        self.length = self.SetLength()    
+        #calibs matrix
+        self.calibs = self.ReadCalibs(self.SetIndex)
+        self.Kitti_Data = self.LoadAll() #this is where the rectified data lives. as a vector of Kitti_tdata's
         
+        #RectifyAll() Done on object call
+    
+    def SetLength(self):
+        if(self.TrainingBool):
+            length = self.PathPool.Im_2_Dir_dat_train.GetLength()
+        else:
+            length = self.PathPool.Im_2_Dir_dat_test.GetLength()
+    
+    def ReadCalibs(self, indexer):
+        ret = np.zeros(4, 4)
         
+        if(self.TrainingBool):
+            #read the calibs from the indexer
+            path = self.PathPool.Get_train_calib(self.index)
+        else:
+            path = self.PathPool.Get_test_calib(self.index)
+        return
+    
+    def FileToArray(self, img):
+        img.load()
+        data = np.asarray(img, dtype="int32")
+        return data
         
+
+    def LoadAll(self):
+        DataList = []
+
+        for x in range(0, self.length):
+            if(self.TrainingBool):
+                Im2 = Image.open(self.PathPool.Im_2_Dir_train.lists[x])
+                Im3 = Image.open(self.PathPool.Im_3_Dir_train.lists[x])
+                velo = np.fromfile(self.PathPool.Velo_dat_train.lists[x], dtype=np.float32).reshape((-1,4))
+               
+            else:
+                Im2 = Image.open(self.PathPool.Im_2_Dir_test.lists[x])
+                Im3 = Image.open(self.PathPool.Im_3_Dir_test.lists[x])
+                velo = np.fromfile(self.PathPool.Velo_dat_test.lists[x], dtype = np.float32).reshape((-1,4))
+                            
+            Im2 = self.FileToArray(Im2)
+            Im3 = self.FileToArray(Im3)
+            velo = velo[:, 0:3] # lidar xyz (front, left, up)
+            
+            #load the data into a tData object
+            datum = Kitti_tData(image_2 = Im2, image_3 = Im3, velomap = velo, calibs = self.calibs)
+            DataList.append(datum)
+            
+        return DataList
+        
+   # def RectifyAll(self):
+        
+   #     for x in range(0, self.length): #length of set of images in index:
+   #         self.Kitti_Data[x].RectifyImagesLeft()
+        
+   #     return
+        
+    #TODO: Rectify Images-> Follow from proj_velo2cam.py. Only rectify left. Left/right = redundant and not possible
 class Kitti_tData:
     """
         Utility class to load data.
     """
     
-    def __init__(self, image_1, image_2, velomap, frame_id=-1,obj_type="unset",truncation=-1,occlusion=-1,\
+    def __init__(self, image_2, image_3, velomap, calibs, frame_id=-1,obj_type="unset",truncation=-1,occlusion=-1,\
                  obs_angle=-10,x1=-1,y1=-1,x2=-1,y2=-1,w=-1,h=-1,l=-1,\
                  X=-1000,Y=-1000,Z=-1000,yaw=-10,score=-1000,track_id=-1, observation = False):
         """
@@ -26,10 +99,9 @@ class Kitti_tData:
         """
         
         # init object data
-        self.image_1    = image_1
         self.image_2    = image_2
+        self.image_3    = image_3
         self.velomap    = velomap
-        self.IM_Combo   = []
         self.frame_id   = frame_id
         self.track_id   = track_id
         self.obj_type   = obj_type
@@ -56,15 +128,17 @@ class Kitti_tData:
         self.valid      = False
         self.GroundTruth = observation
         self.shape      = []
-        
+        self.calibs     = calibs
         self.imwidth    = 1242
         self.imheight   = 345
         self.velowidth  = self.imwidth
         self.veloheight = 64        
-        
+        self.LoadData()
         self.check2d()
         self.check3d()
         self.setshape()
+        self.IM_Combo   = self.RectifyImagesLeft()
+        
         
     def __str__(self):
         
@@ -93,10 +167,12 @@ class Kitti_tData:
         self.isValid = val
     
     def setshape(self):
-        self.shape = image_1.shape()
+        self.shape = self.image_2.shape()
         
-    #loads whole file. need a line by line dealio. so we can have a sequence 
+    #loads whole label file. need a line by line dealio. so we can have a sequence 
     #of each from velodyne, left, right, and groundtruth that is ennumerable
+    
+    #TODO take out the parameters from the function call. take that from the object data
     def LoadData(self, root, sequence_name, frame):
         filename = os.path.join(root, "%s.txt" %sequence_name)
         f = open(filename, "r")
@@ -125,8 +201,35 @@ class Kitti_tData:
                 self.check2d()
                 self.check3d()
                 
-    def OverlayImages(self, image_1, image_2, velomap):
-        #do a thing    
+    def RectifyImagesLeft(self):
+        #To project a point from Velodyne coordinates into the left color image,
+        #you can use this formula: x = P2 * R0_rect * Tr_velo_to_cam * y
+        #For the right color image: x = P3 * R0_rect * Tr_velo_to_cam * y    
+        Im1 = self.image_2
+        velo = self.velomap
+        
+        # P2 (3 x 4) for left eye
+        P2 = np.matrix([float(x) for x in self.calibs[2].strip('\n').split(' ')[1:]]).reshape(3,4)
+        R0_rect = np.matrix([float(x) for x in self.calibs[4].strip('\n').split(' ')[1:]]).reshape(3,3)
+        # Add a 1 in bottom-right, reshape to 4 x 4
+        R0_rect = np.insert(R0_rect,3,values=[0,0,0],axis=0)
+        R0_rect = np.insert(R0_rect,3,values=[0,0,0,1],axis=1)
+        Tr_velo_to_cam = np.matrix([float(x) for x in self.calibs[5].strip('\n').split(' ')[1:]]).reshape(3,4)
+        Tr_velo_to_cam = np.insert(Tr_velo_to_cam,3,values=[0,0,0,1],axis=0)
+        
+        
+        
+        velo = np.insert(velo,3,1,axis=1).T
+        velo = np.delete(velo,np.where(velo[0,:]<0),axis=1)
+        cam = P2 * R0_rect * Tr_velo_to_cam * velo
+        cam = np.delete(cam,np.where(cam[2,:]<0)[1],axis=1)
+        
+
+        #TODO ->verify rectification with matplotlib.
+        returner = np.concatenate(cam, velo, axis = 2)
+        return returner
+        
+#BELOW IS REFERENCE CODE. NOT USED
 
 def loadData(self, root_dir, cls, min_score=-1000, loading_groundtruth=False):
         """
